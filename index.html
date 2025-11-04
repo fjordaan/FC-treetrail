@@ -23,17 +23,18 @@
     }
     /* Layout */
     .app {
-      height: 100svh; /* supports mobile address-bar collapse */
+      /* Robust mobile height: uses JS-set --vh fallback; modern Safari gets 100dvh */
+      height: calc(var(--vh, 1vh) * 100);
       width: 100vw;
       display: grid;
       grid-template-rows: auto 1fr auto;
     }
-    header, footer {
-      display: flex; align-items: center; justify-content: space-between;
-      padding: 10px 14px; gap: 12px; backdrop-filter: blur(8px);
-      background: linear-gradient(180deg, rgba(0,0,0,0.55), rgba(0,0,0,0.25));
+
+    @supports (height: 100dvh) {
+      .app { height: 100dvh; }
     }
-    header { border-bottom: 1px solid rgba(255,255,255,0.06); }
+    header, footer { border-top: 1px solid rgba(255,255,255,0.06); padding-bottom: calc(10px + env(safe-area-inset-bottom)); }
+    header { border-bottom: 1px solid rgba(255,255,255,0.06); padding-top: calc(10px + env(safe-area-inset-top)); }
     footer { border-top: 1px solid rgba(255,255,255,0.06); }
 
     .title { font-weight: 600; letter-spacing: .2px; font-size: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -41,18 +42,19 @@
 
     .viewer {
       position: relative; height: 100%; width: 100%; overflow: hidden;
-      touch-action: pan-y; /* allow vertical scroll inside image if needed */
+      touch-action: pan-y;
       background: #111;
+      display: flex; align-items: center; justify-content: center;
     }
     .slide {
-      position: absolute; inset: 0; display: grid; place-items: center;
+      position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
       opacity: 0; transform: translateX(30%); transition: opacity .28s ease, transform .32s ease;
     }
     .slide.active { opacity: 1; transform: translateX(0); }
     .slide.exit-left { transform: translateX(-30%); opacity: 0; }
     .slide.exit-right { transform: translateX(30%); opacity: 0; }
 
-    .slide img { max-width: 100%; max-height: 100%; object-fit: contain; }
+    .slide img { width: 100%; height: 100%; object-fit: contain; }
 
     /* Controls */
     .controls { display: flex; align-items: center; gap: 10px; }
@@ -127,8 +129,14 @@
         // Add more here...
       ]
     };
-
     // ====== APP LOGIC ======
+    // Viewport height fix for iOS Safari address bar / notch
+    function setVh() {
+      document.documentElement.style.setProperty('--vh', (window.innerHeight * 0.01) + 'px');
+    }
+    window.addEventListener('resize', setVh);
+    window.addEventListener('orientationchange', setVh);
+    setVh();
     const titleEl = document.getElementById('trailTitle');
     const viewer = document.getElementById('viewer');
     const stepNumEl = document.getElementById('stepNum');
