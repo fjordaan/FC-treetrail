@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Cemetery Trail — Mobile Viewer</title>
+  <meta name="theme-color" content="#111" />
+  <style>
+    :root {
+      --bg: #0b0b0b;
+      --fg: #ffffff;
+      --muted: #bdbdbd;
+      --accent: #3ecf8e;
+      --btn-bg: rgba(255,255,255,0.08);
+      --btn-bg-active: rgba(255,255,255,0.18);
+    }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      margin: 0; background: var(--bg); color: var(--fg);
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, Noto Sans, "Apple Color Emoji", "Segoe UI Emoji";
+      overscroll-behavior: none;
+    }
+    /* Layout */
+    .app {
+      height: 100svh; /* supports mobile address-bar collapse */
+      width: 100vw;
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+    }
+    header, footer {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 10px 14px; gap: 12px; backdrop-filter: blur(8px);
+      background: linear-gradient(180deg, rgba(0,0,0,0.55), rgba(0,0,0,0.25));
+    }
+    header { border-bottom: 1px solid rgba(255,255,255,0.06); }
+    footer { border-top: 1px solid rgba(255,255,255,0.06); }
+
+    .title { font-weight: 600; letter-spacing: .2px; font-size: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .progress { font-variant-numeric: tabular-nums; color: var(--muted); font-size: 13px; }
+
+    .viewer {
+      position: relative; height: 100%; width: 100%; overflow: hidden;
+      touch-action: pan-y; /* allow vertical scroll inside image if needed */
+      background: #111;
+    }
+    .slide {
+      position: absolute; inset: 0; display: grid; place-items: center;
+      opacity: 0; transform: translateX(30%); transition: opacity .28s ease, transform .32s ease;
+    }
+    .slide.active { opacity: 1; transform: translateX(0); }
+    .slide.exit-left { transform: translateX(-30%); opacity: 0; }
+    .slide.exit-right { transform: translateX(30%); opacity: 0; }
+
+    .slide img { max-width: 100%; max-height: 100%; object-fit: contain; }
+
+    /* Controls */
+    .controls { display: flex; align-items: center; gap: 10px; }
+    button.icon {
+      -webkit-tap-highlight-color: transparent;
+      appearance: none; border: 0; border-radius: 14px; width: 44px; height: 44px;
+      display: inline-grid; place-items: center; background: var(--btn-bg); color: var(--fg);
+    }
+    button.icon:active { background: var(--btn-bg-active); }
+    button.icon[disabled] { opacity: .35; }
+
+    .dotbar { display: flex; gap: 6px; align-items: center; }
+    .dot { width: 6px; height: 6px; border-radius: 999px; background: rgba(255,255,255,.28); }
+    .dot.active { background: var(--accent); }
+
+    /* Swipe hint */
+    .hint { position: absolute; bottom: 16px; left: 50%; transform: translateX(-50%);
+      font-size: 12px; color: var(--muted); background: rgba(0,0,0,.45); padding: 8px 10px; border-radius: 999px; }
+
+    /* Fullscreen support */
+    .fs-btn { font-size: 12px; padding: 8px 10px; background: var(--btn-bg); border-radius: 12px; border: 0; color: var(--fg); }
+
+    /* Share QR link button (optional) */
+    .link { font-size: 12px; color: var(--muted); text-decoration: underline; }
+
+    @media (min-width: 600px) {
+      .app { max-width: 420px; margin: 0 auto; border-left: 1px solid rgba(255,255,255,.06); border-right: 1px solid rgba(255,255,255,.06); }
+    }
+  </style>
+</head>
+<body>
+  <div class="app" role="application" aria-label="Cemetery walking trail">
+    <header>
+      <div class="title" id="trailTitle">Fulham Cemetery: Heritage Trail</div>
+      <div class="progress" aria-live="polite"><span id="stepNum">1</span>/<span id="stepTotal">—</span></div>
+    </header>
+
+    <main class="viewer" id="viewer" aria-live="polite">
+      <!-- Slides injected by JS -->
+      <div class="hint" id="hint">Swipe or tap ▸</div>
+    </main>
+
+    <footer>
+      <div class="controls">
+        <button class="icon" id="prevBtn" aria-label="Previous step" title="Previous">
+          <!-- Left chevron -->
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M15 18l-6-6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+        <button class="icon" id="nextBtn" aria-label="Next step" title="Next">
+          <!-- Right chevron -->
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+      </div>
+      <div class="dotbar" id="dotbar" aria-hidden="true"></div>
+      <button class="fs-btn" id="fsBtn" aria-label="Toggle fullscreen">Fullscreen</button>
+    </footer>
+  </div>
+
+  <script>
+    // ====== CONFIGURE YOUR TRAIL HERE ======
+    // 1) Export each step from Figma at phone size (e.g., 1080x1920) as JPG/PNG.
+    // 2) Place them in a folder (e.g., /steps/) and list them below in order.
+    const TRAIL = {
+      title: "Fulham Cemetery: Heritage Trail",
+      // Tip: Use descriptive filenames; you can include captions later if needed.
+      steps: [
+        "steps/step-01.jpg",
+        "steps/step-02.jpg",
+        "steps/step-03.jpg",
+        // Add more here...
+      ]
+    };
+
+    // ====== APP LOGIC ======
+    const titleEl = document.getElementById('trailTitle');
+    const viewer = document.getElementById('viewer');
+    const stepNumEl = document.getElementById('stepNum');
+    const stepTotalEl = document.getElementById('stepTotal');
+    const prevBtn = document.getElementById('prevBtn');
+    const nextBtn = document.getElementById('nextBtn');
+    const fsBtn = document.getElementById('fsBtn');
+    const hint = document.getElementById('hint');
+    const dotbar = document.getElementById('dotbar');
+
+    titleEl.textContent = TRAIL.title;
+    stepTotalEl.textContent = TRAIL.steps.length;
+
+    let index = 0; // current slide index
+    let slides = [];
+
+    function createSlide(src, i) {
+      const wrap = document.createElement('div');
+      wrap.className = 'slide';
+      wrap.setAttribute('role', 'group');
+      wrap.setAttribute('aria-roledescription', 'slide');
+      wrap.setAttribute('aria-label', `Step ${i+1} of ${TRAIL.steps.length}`);
+
+      const img = document.createElement('img');
+      img.alt = `Trail step ${i+1}`;
+      img.src = src;
+      img.decoding = 'async';
+      img.loading = i === 0 ? 'eager' : 'lazy';
+      wrap.appendChild(img);
+      viewer.appendChild(wrap);
+      return wrap;
+    }
+
+    function buildDots() {
+      dotbar.innerHTML = '';
+      TRAIL.steps.forEach((_, i) => {
+        const d = document.createElement('div');
+        d.className = 'dot' + (i === 0 ? ' active' : '');
+        dotbar.appendChild(d);
+      });
+    }
+
+    function setActive(newIndex, direction = 1) {
+      if (newIndex < 0 || newIndex >= TRAIL.steps.length) return;
+      const old = index;
+      index = newIndex;
+      stepNumEl.textContent = index + 1;
+
+      slides.forEach((s, i) => {
+        s.classList.remove('active', 'exit-left', 'exit-right');
+        if (i === index) s.classList.add('active');
+      });
+      if (slides[old]) slides[old].classList.add(direction > 0 ? 'exit-left' : 'exit-right');
+
+      // update dots
+      [...dotbar.children].forEach((d, i) => d.classList.toggle('active', i === index));
+
+      // buttons
+      prevBtn.disabled = index === 0;
+      nextBtn.disabled = index === TRAIL.steps.length - 1;
+
+      // update URL hash for deep-linking (e.g., #3)
+      const hash = `#${index + 1}`;
+      if (location.hash !== hash) history.replaceState(null, '', hash);
+    }
+
+    function next() { setActive(index + 1, +1); }
+    function prev() { setActive(index - 1, -1); }
+
+    // Touch/swipe detection (simple and lightweight)
+    let touchStartX = null, touchStartY = null, touchStartTime = 0;
+    const SWIPE_THRESHOLD = 40; // px
+    viewer.addEventListener('touchstart', (e) => {
+      const t = e.touches[0];
+      touchStartX = t.clientX; touchStartY = t.clientY; touchStartTime = Date.now();
+    }, {passive: true});
+    viewer.addEventListener('touchend', (e) => {
+      if (touchStartX == null) return;
+      const t = e.changedTouches[0];
+      const dx = t.clientX - touchStartX;
+      const dy = t.clientY - touchStartY;
+      const dt = Date.now() - touchStartTime;
+      // Horizontal swipe if dx dominates and exceeds threshold
+      if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > SWIPE_THRESHOLD && dt < 600) {
+        if (dx < 0) next(); else prev();
+        hint?.remove();
+      }
+      touchStartX = touchStartY = null;
+    }, {passive: true});
+
+    // Keyboard support
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowRight' || e.key === 'PageDown') next();
+      if (e.key === 'ArrowLeft' || e.key === 'PageUp') prev();
+    });
+
+    // Click/tap to advance (except on buttons)
+    viewer.addEventListener('click', (e) => {
+      const tag = (e.target.tagName || '').toLowerCase();
+      if (tag === 'button' || tag === 'svg' || tag === 'path') return;
+      const w = viewer.getBoundingClientRect();
+      const left = e.clientX - w.left < w.width / 2;
+      left ? prev() : next();
+      hint?.remove();
+    });
+
+    // Fullscreen toggle
+    fsBtn.addEventListener('click', async () => {
+      try {
+        if (!document.fullscreenElement) {
+          await document.documentElement.requestFullscreen();
+          fsBtn.textContent = 'Exit fullscreen';
+        } else {
+          await document.exitFullscreen();
+          fsBtn.textContent = 'Fullscreen';
+        }
+      } catch (e) { console.warn('Fullscreen not available', e); }
+    });
+
+    // Preload neighbor images for snappy navigation
+    function preloadAround(i) {
+      [i-1, i+1].forEach(idx => {
+        if (idx >= 0 && idx < TRAIL.steps.length) {
+          const src = TRAIL.steps[idx];
+          const img = new Image(); img.src = src;
+        }
+      });
+    }
+
+    // Initialize
+    function init() {
+      TRAIL.steps.forEach((src, i) => slides.push(createSlide(src, i)));
+      buildDots();
+
+      // support deep links like #5
+      const n = parseInt(location.hash.replace('#',''), 10);
+      const startIndex = Number.isFinite(n) && n >= 1 && n <= TRAIL.steps.length ? (n-1) : 0;
+      setActive(startIndex, +1);
+      preloadAround(startIndex);
+
+      prevBtn.addEventListener('click', prev);
+      nextBtn.addEventListener('click', next);
+
+      // Preload on change
+      const obs = new MutationObserver(() => preloadAround(index));
+      obs.observe(stepNumEl, {childList: true});
+    }
+
+    document.addEventListener('DOMContentLoaded', init);
+  </script>
+</body>
+</html>
